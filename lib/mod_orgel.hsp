@@ -1,0 +1,753 @@
+; ------------------------------------------------------------------------------
+; Modules for 0rGEL(0rangetail Game Engine Library).
+; Author:	0rangetail hashikemu(a.k.a karuua)
+; Date:		2022-01-07
+; ------------------------------------------------------------------------------
+
+; ------------------------------------------------------------------------------
+; モジュール機能設定
+; ------------------------------------------------------------------------------
+#define global ORGEL_DEBUG_MSG_ENABLE	; コメントアウトでlogmesに情報を流さなくなる
+; #define global ORGEL_BEFORE_HSP37BETA4	; コメントアウトでHSP3.7 beta4での仕様変更に対応
+
+; ------------------------------------------------------------------------------
+; 基本機能
+; ------------------------------------------------------------------------------
+; クロスプラットフォーム関連
+#module mod_crossPlatForm
+	; プラットフォームタイプを取得
+	#defcfunc xpf_GetPlatformType
+		getreq platformType,SYSREQ_PLATFORM
+		; platformType=PLATFORM_ANDROID
+	return platformType
+#global
+
+
+; シーン管理
+#module mod_sceneManager
+	; State enumration
+	#define global STATE_INIT		(0)
+	#define global STATE_UPDATE		(1)
+	#define global STATE_DESTROY	(2)
+
+	; シーン変更関数　scene_ChangeScene シーン番号(0～),シーン状態(0=初期化,1=アップデート,2=シーン終了処理)
+	#deffunc scene_ChangeScene int sceneNumIN, int sceneStateIN
+		sceneNum = sceneNumIN
+		sceneState = sceneStateIN
+		if sceneState==0 : logmes "SCENE:Change	(Num:"+sceneNum+", State:INIT)"
+		if sceneState==1 : logmes "SCENE:Change	(Num:"+sceneNum+", State:UPDATE)"
+		if sceneState==2 : logmes "SCENE:Change	(Num:"+sceneNum+", State:DESTROY)"
+	return
+	; シーン状態の取得関数　"State"でシーン状態、"Num"でシーン番号を返す
+	#defcfunc scene_Get str name
+		if name=="State" : ret=sceneState
+		if name=="Num" : ret=sceneNum
+	return ret
+#global
+
+
+; ------------------------------------------------------------------------------
+; ベクトル演算・行列演算・クォータニオン演算
+; ------------------------------------------------------------------------------
+
+; 標準関数のリストアップ
+; M_PI		; 定数：円周率
+; deg2rad()	; 関数：度からラジアンに変換する
+; rad2deg()	; 関数：ラジアンから度に変換する
+#const global M_HPI 0.5*M_PI
+#const global M_DPI 2.0*M_PI
+
+; mod_Matrixの必要最低限部分だけ取り出したもの
+#module mod_Matrix
+	#deffunc MatrixIni
+		ddim Dftmtx_real, 1
+		ddim Dftmtx_Img,  1
+		Dftmtx_n = 0
+		Dftmtx_i = 0
+		return
+
+
+
+	#defcfunc MatrixStrf_ str p_fmt, array v_m1
+		;	配列の要素数取得
+		mm1 = length(v_m1)
+		mn1 = length2(v_m1)
+
+		sdim s, 64
+
+
+		;	文字列化
+		if (mm1 = 1)&(mn1 = 0) {
+			;スカラー
+			s = strf(p_fmt, v_m1)
+			return s
+		} else {
+			s = ""
+			if mn1 = 0 {
+				;1列
+				repeat mm1    ;行
+					s+= "| " + strf(p_fmt, v_m1(cnt)) + " |"
+					if cnt < mm1-1 : s+="\n"
+				loop
+			} else {
+				repeat mm1	;行
+					s+= "| "
+					i = cnt
+					repeat mn1	;列
+						s+="" + strf(p_fmt, v_m1(i, cnt)) + " "
+					loop
+					s+="|"
+					if cnt < mm1-1 : s+="\n"
+				loop
+			}
+		}
+
+		return s
+
+	#define global ctype MatrixStrf(%1="%s", %2) MatrixStrf_(%1, %2)
+	#deffunc MatrixMul array v_m3, array v_m1, array v_m2
+		;	配列の要素数取得
+		mm1 = length(v_m1)
+		mn1 = length2(v_m1)
+		if mn1 = 1 : mn1 = 0
+		mm2 = length(v_m2)
+		mn2 = length2(v_m2)
+		if mn2 = 1 : mn2 = 0
+
+		;	変数の型
+		m1t = vartype(v_m1)
+		m2t = vartype(v_m2)
+
+		;---------------------
+		;	エラーチェック
+		;---------------------
+		;変数の型が一致しない
+		;実数、整数に対応
+		if ((m1t!3)&(m1t!4)) | ((m2t!3)&(m2t!4)) {
+			dim v_m3, 1
+			if m1t=3 : ddim v_m3, 1
+			return 2
+		}
+		
+		;配列の要素数が一致しない場合、statに1を返します。
+		if (mn1!mm2) {
+			;両方共スカラーではない場合も同じエラーとする。
+			if ((mm1!1)|(mn1!0)) & ((mm2!1)|(mn2!0)) {
+				dim v_m3, 1
+				if m1t=3 : ddim v_m3, 1
+				return 1
+			}
+		}
+
+		;---------------------
+		;	演算
+		;---------------------
+		
+		;スカラー*スカラー
+		if (mm1=1)&(mn1=0) & (mm2=1)&(mn2=0) {
+			;	出力先配列を作成
+			;HSPの仕様に合わせ、左側の型に合わせる
+			if m1t=3 : ddim v_m3, mm1, mn1
+			if m1t=4 :  dim v_m3, mm1, mn1
+			
+			v_m3 = v_m1 * v_m2
+			return 0
+		}
+		
+		;スカラー*行列
+		if (mm1=1)&(mn1=0) {
+			;	出力先配列を作成
+			;HSPの仕様に合わせ、左側の型に合わせる
+			if m1t=3 : ddim v_m3, mm2, mn2
+			if m1t=4 :  dim v_m3, mm2, mn2
+
+			;1列
+			if mn2 = 0 {
+				repeat mm2
+					v_m3(cnt) = v_m1 * v_m2(cnt)
+				loop
+			}
+			;2列以上
+			repeat mm2
+				i = cnt
+				repeat mn2
+					v_m3(i, cnt) = v_m1 * v_m2(i, cnt)
+				loop
+			loop
+			return 0
+		}
+
+		;行列*スカラー
+		if (mm2=1)&(mn2=0) {
+			;	出力先配列を作成
+			;HSPの仕様に合わせ、左側の型に合わせる
+			if m1t=3 : ddim v_m3, mm1, mn1
+			if m1t=4 :  dim v_m3, mm1, mn1
+			
+			;1列
+			if mn1 = 0 {
+				repeat mm1
+					v_m3(cnt) = v_m1(cnt) * v_m2
+				loop
+			}
+			;2列以上
+			repeat mm1
+				i = cnt
+				repeat mn1
+					v_m3(i, cnt) = v_m1(i, cnt) * v_m2
+				loop
+			loop
+			return 0
+		}
+		
+		;行列*行列
+		;	出力先配列を作成
+		;HSPの仕様に合わせ、左側の型に合わせる
+		if m1t=3 : ddim v_m3, mm1, mn2
+		if m1t=4 :  dim v_m3, mm1, mn2
+
+		;v_m1が1列
+		if mn1 = 0 {
+			repeat mn2
+				j = cnt
+				repeat mm1
+					i = cnt
+					repeat mn1	;mm2
+						v_m3(i, j) += v_m1(i) * v_m2(0, j)
+					loop
+				loop
+			loop
+			return 0
+		}
+
+		;v_m2が1列
+		if mn2 = 0 {
+			repeat mm1
+				i = cnt
+				repeat mn1	;mm2
+					v_m3(i) += v_m1(i, cnt) * v_m2(cnt)
+				loop
+			loop
+			return 0
+		}
+
+		;v_m1,v_m2ともに2列以上
+		repeat mn2
+			j = cnt
+			repeat mm1
+				i = cnt
+				repeat mn1	;mm2
+					v_m3(i, j) += v_m1(i, cnt) * v_m2(cnt, j)
+				loop
+			loop
+		loop
+
+		return 0
+
+
+
+
+	#deffunc MatrixTranspose array v_m2, array v_m1
+		;	配列の要素数取得
+		mm1 = length(v_m1)
+		mn1 = length2(v_m1)
+		if mn1=1 : mn1 = 0
+
+		;	変数の型
+		m1t = vartype(v_m1)
+		
+		;---------------------
+		;	エラーチェック
+		;---------------------
+
+		;---------------------
+		;	演算
+		;---------------------
+		
+		;	出力先配列を作成
+		if m1t=3 {
+			ddim v_m2, mn1, mm1
+		} else {
+			dim v_m2, mn1, mm1
+		}
+		if m1t=2 {
+			;文字列型のvarsizeは確保してある文字数になります。
+			sdim v_m2, varsize(v_m1), mn1, mm1
+		}
+		
+		;	メモリコピー
+		if (mm1=1) | (mn1=0) & (m1t!2) {
+			;スカラー or 1列
+			memcpy v_m2, v_m1, varsize(v_m1)
+		} else {
+			if mn1 = 0 {
+				;1列
+				repeat mm1
+					v_m2(0, cnt) = v_m1(cnt)
+				loop
+			} else {
+				repeat mm1
+					i = cnt
+					repeat mn1
+						v_m2(cnt, i) = v_m1(i, cnt)
+					loop
+				loop
+			}
+		}
+		return 0
+
+
+
+
+
+#global
+
+; mod_matrixの追加機能
+#module mod_MatrixAppend
+	#deffunc MatrixMul3x3by3x3T array v_m3, array v_m1, array v_m2
+		;行列*行列
+		;	出力先配列を作成
+		;HSPの仕様に合わせ、左側の型に合わせる
+		ddim v_m3, 3, 3
+		
+		;v_m1,v_m2ともに2列以上
+		repeat 3
+			j = cnt
+			repeat 3
+				i = cnt
+				v_m3(j, i) = v_m1(i, 0)*v_m2(0, j) + v_m1(i, 1)*v_m2(1, j) + v_m1(i, 2)*v_m2(2, j)
+			loop
+		loop
+	return
+	#deffunc MatrixMul3x3by3x1 array v_m3, array v_m1, array v_m2
+		ddim v_m3,3
+		repeat 3
+			v_m3(cnt) += v_m1(cnt, 0) * v_m2(0) + v_m1(cnt, 1) * v_m2(1) + v_m1(cnt, 2) * v_m2(2);    + v_m0(cnt)
+		loop
+	return
+	#deffunc MatrixLogMes_ array v_m1, str p_fmt
+		;	配列の要素数取得
+		mm1 = length(v_m1)
+		mn1 = length2(v_m1)
+	
+		;	表示
+		if (mm1 = 1)&(mn1 = 0) {
+			;スカラー
+			logmes strf(p_fmt, v_m1)
+			return
+		} else {
+			s = ""
+			if mn1 = 0 {
+				;1列
+				repeat mm1    ;行
+					s+= "| " + strf(p_fmt, v_m1(cnt)) + " |"
+					if cnt < mm1-1 : s+="\n"
+				loop
+			} else {
+				repeat mm1	;行
+					s+= "| "
+					i = cnt
+					repeat mn1	;列
+						s+="" + strf(p_fmt, v_m1(i, cnt)) + " "
+					loop
+					s+="|"
+					if cnt < mm1-1 : s+="\n"
+				loop
+			}
+			logmes s
+		}
+	
+		return
+	
+	#define global MatrixLogMes(%1, %2="%s") MatrixLogMes_ %1, %2
+	#deffunc MatrixCTranspose array v_m1
+		;	配列の要素数取得
+		mm1 = length(v_m1)
+		mn1 = length2(v_m1)
+		if mn1=1 : mn1 = 0
+	
+		;	変数の型
+		m1t = vartype(v_m1)
+		
+		;---------------------
+		;	エラーチェック
+		;---------------------
+		;スカラー
+		if (mm1=1)&(mn1=0) : return 0
+	
+		;---------------------
+		;	演算
+		;---------------------
+		MatrixTranspose l_mtx, v_m1
+		if stat : return stat
+		mm1 = length(l_mtx)
+		mn1 = length2(l_mtx)
+		if mn1=1 : mn1 = 0
+	
+		;	出力先配列を作成
+		if m1t=3 {
+			ddim v_m1, mm1, mn1
+		} else {
+			 dim v_m1, mm1, mn1
+		}
+		if m1t=2 {
+			;文字列型のvarsizeは確保してある文字数になります。
+			sdim v_m1, varsize(v_m1), mm1, mn1
+		}
+		
+		;	書き戻す
+		if m1t=2 {
+			;	文字列型の場合は、memcpy出来ないので１個ずつコピー
+			if mn1 = 0 {
+				repeat mm1
+					v_m1(cnt) = l_mtx(cnt)
+				loop
+			} else {
+				repeat mm1
+					i = cnt
+					repeat mn1
+						v_m1(i, cnt) = l_mtx(i, cnt)
+					loop
+				loop
+			}
+		} else {
+			memcpy v_m1, l_mtx, varsize(l_mtx)
+		}
+		;メモリー開放（意味ないかも？）
+		dim l_mtx, 1
+		return 0
+#global
+
+;モジュール初期化
+MatrixIni
+
+
+; ベクトル計算
+#module mod_vec
+	; ベクトルのコピー
+	#define global vec_Copy3(%1,%2) %1(0)=(%2(0)) : %1(1)=(%2(1)) : %1(2)=(%2(2))
+	#define global vec_Copy4(%1,%2) %1(0)=(%2(0)) : %1(1)=(%2(1)) : %1(2)=(%2(2)) : %1(3)=(%2(3))
+	; クォータニオンから共役クォータニオンを作る
+	#define global vec_Q2qconj(%1,%2) %1(0)=-(%2(0)) : %1(1)=-(%2(1)) : %1(2)=-(%2(2)) : %1(3)=(%2(3))
+	; 内積　ベクトルAとベクトルBの内積を計算して結果をresultに返します。
+	#define global ctype vec_Dot3(%1,%2,%3,%4,%5,%6) (%1)*(%4)+(%2)*(%5)+(%3)*(%6)
+	; 外積　ベクトルAとベクトルBの外積を計算して結果をベクトルCに返します。
+		;	%1, %2, %3	:ベクトルA
+		;	%4, %5, %6	:ベクトルB
+		;	%7, %8, %9	:ベクトルC [out]
+		;	(ベクトルC) = (ベクトルA)×(ベクトルB)
+	#define global vec_Cross3(%1,%2,%3,%4,%5,%6,%7,%8,%9) %9 = %2*%6 - %3*%5 : %7 = %3*%4 - %1*%6 : %8 = %1*%5 - %2*%4
+	; 2ノルム　ベクトルAの絶対値を計算して結果をresultに返します。
+	#define global ctype vec_Norm3(%1,%2,%3) sqrt( (%1)*(%1)+(%2)*(%2)+(%3)*(%3) )
+	; 2ノルム(配列入力)
+	#define global ctype vec_Norm3Array(%1) vec_Norm3(%1(0),%1(1),%1(2))
+	; 2乗和
+	#define global ctype vec_SumPower2(%1,%2,%3) ( (%1)*(%1)+(%2)*(%2)+(%3)*(%3) )
+#global
+
+; クォータニオン計算機能
+#module mod_quat
+	#deffunc quat2rotMat array q, array rot
+		x=q(0) : y=q(1) : z=q(2) : w=q(3)
+		xx2=x*x*2.0
+		yy2=y*y*2.0
+		zz2=z*z*2.0
+		xy2=x*y*2.0
+		yz2=y*z*2.0
+		zw2=z*w*2.0
+		xw2=x*w*2.0
+		xz2=x*z*2.0
+		yw2=y*w*2.0
+		rot(0,0)=1.0 - yy2 - zz2	: rot(1,0)=xy2 + zw2		: rot(2,0)=xz2 - yw2
+		rot(0,1)=xy2 - zw2			: rot(1,1)=1.0 - xx2 - zz2	: rot(2,1)=yz2 + xw2
+		rot(0,2)=xz2 + yw2			: rot(1,2)=yz2 - xw2		: rot(2,2)=1.0 - xx2 - yy2
+	return
+	#define global quatmul(%1,%2,%3) \
+		ddim %3,4 :\
+		%3(0) =  %2(3)*%1(0)-%2(2)*%1(1)+%2(1)*%1(2)+%2(0)*%1(3) :\
+		%3(1) =  %2(2)*%1(0)+%2(3)*%1(1)-%2(0)*%1(2)+%2(1)*%1(3) :\
+		%3(2) = -%2(1)*%1(0)+%2(0)*%1(1)+%2(3)*%1(2)+%2(2)*%1(3) :\
+		%3(3) = -%2(0)*%1(0)-%2(1)*%1(1)-%2(2)*%1(2)+%2(3)*%1(3)
+#global
+
+
+
+; ------------------------------------------------------------------------------
+; HGIMG4基本機能
+; ------------------------------------------------------------------------------
+; HGIMG4の基本的機能を補助する関数
+; dep:mod_matrix
+; 	  mod_quat
+#module mod_hg4Util
+	; 数学座標系(東がX，北がY，上がZ)で扱うためのラッパー関数　使用頻度が高いためhg4_プレフィックスはつけない
+	#define global getposM(%1,%2,%3,%4) getpos %1,%2,%4,%3 : %3=-%3
+	#define global setposM(%1,%2,%3,%4) setpos %1,%2,%4,-(%3)
+	#define global addposM(%1,%2,%3,%4) addpos %1,%2,%4,-(%3)
+	#define global getangM(%1,%2,%3,%4) getang %1,%2,%4,%3 : %3=-(%3)
+	#define global setangM(%1,%2,%3,%4) setang %1,%2,%4,-(%3)
+	#define global getquatM(%1,%2,%3,%4,%5) getquat %1,%2,%4,%3,%5 : %3=-(%3)
+	#define global setquatM(%1,%2,%3,%4,%5) setquat %1,%2,%4,-(%3),%5
+	#define global getscaleM(%1,%2,%3,%4) getscale %1,%2,%4,%3
+	#define global setscaleM(%1,%2,%3,%4) setscale %1,%2,%4,%3
+	#define global gppapplyM(%1,%2,%3,%4,%5) gppapply %1,%2,%3,%5,-(%4)
+	#define global getworkM(%1,%2,%3,%4) getwork %1,%2,%4,%3 : %3=-(%3)
+	#define global setworkM(%1,%2,%3,%4) setwork %1,%2,%4,-(%3)
+	#define global gplookatM(%1,%2,%3,%4) gplookat %1,%2,%4,-(%3)
+	#define global setdirM(%1,%2,%3,%4) setdir %1,%2,%4,-(%3)
+	
+	; hgimg4の初期化シーケンス　effekseerの初期化も含む
+	#deffunc hg4_Initialize
+		setreq SYSREQ_VSYNC,1						; VSYNC設定
+		setreq SYSREQ_MAXOBJ,2048					; オブジェクト最大数を設定　大きくしすぎるとフレームレート低下する
+		gpreset 0									; HGIMG4を初期化
+		setreq SYSREQ_LOGWRITE,1					; 終了時ログ出力設定
+		setcls CLSMODE_SOLID, $000000;6ba3e0		; 背景を初期化
+	
+		#ifndef BUILD_TARGET_MOBILE
+		#endif
+
+		modelLoadCnt=0
+	return
+	; 独自定義カメラの初期化
+		; ヌルノードを生成する
+		; カメラとして設定する　aspect ratio: 16:9->1.777... 4:3->1.333... 3:2->1.5
+		; 使用するカメラを選択する
+	#define global hg4_GenerateCamera(%1,%2,%3,%4,%5) \
+		gpnull %1 :\
+		gpcamera %1,%2,%3,%4,%5 :\
+		gpusecamera %1 :\
+	; 独自定義ディレクショナルライトの初期化
+		; lit=0.2
+		; amb=1.0
+		; ヌルノードを生成する	
+		; ライトとして登録する		
+		; ライト位置設定		
+		; ライト角度設定		
+		; ライトカラーを設定　ライトの色(強さ)を決める		
+		; アンビエントカラーを設定　環境光の色を決める		
+		; デフォルトのライトに設定
+	#define global hg4_GenerateDirectionalLight(%1,%2,%3) \
+		gpnull %1						:\
+		gplight %1, GPOBJ_LGTOPT_NORMAL	:\
+		setpos %1,10,10,0		:\
+		setang %1,-1.8,0,0			:\
+		setcolor %1, %2,%2,%2		:\
+		setdir %1, %3,%3,%3		:\
+		gpuselight %1				:\
+	; モデルをスケールを含めてロード
+	#deffunc hg4_ModelLoad var objid,str m_name,str m_node,double m_scl
+		m_base = dir_cur;DEF_DIR@
+		m_dir = getpath(m_name,32)				; HSP3.7beta4からモデルロード時カレントディレクトリを基準とする(hgimg3と同一)よう変更されたため
+		m_file = getpath(m_name,8+1)
+		chdir m_dir
+		gpload objid,m_file,m_node				; モデル読み込み
+		chdir m_base
+		
+		setscale objid,m_scl,m_scl,m_scl
+	return
+	; カメラ位置，注視点，パラメータを更新する関数
+	#deffunc hg4_UpdateCamera var obj_camera, double cameraPosX, double cameraPosY, double cameraPosZ, double cameraLatX, double cameraLatY, double cameraLatZ,   double cameraUpX, double cameraUpY, double cameraUpZ,  double fovy, double ratio, double near, double far
+		; effekseer対応のため機能を統合した関数として用意
+		; gpdrawより前で更新する事
+
+		; HGIMG4のカメラパラメータを更新
+		gpcamera obj_camera, fovy, ratio, near, far			; カメラとして設定する　aspect ratio: 16:9->1.777... 4:3->1.333... 3:2->1.5
+		gpusecamera obj_camera								; 使用するカメラを選択する
+	
+		; HGIMG4のカメラの位置と注視点を更新
+		setposM obj_camera,   cameraPosX, cameraPosY, cameraPosZ
+		gplookatM obj_camera, cameraLatX, cameraLatY, cameraLatZ
+	
+		#ifndef BUILD_TARGET_MOBILE
+		#endif
+	return
+	; 独自定義スカイボックスの生成
+	#deffunc hg4_GenerateSkybox var obj_skybox, str SHD_DIR, str skyboxTextureName
+		; スカイボックスを生成
+		; gpusermat  skyboxMat, SHD_DIR+"or_std.vert", SHD_DIR+"or_std.frag","LIGHTING;DIRECTIONAL_LIGHT_COUNT 1;TEXTURED;SKYBOX",-1,0
+		gpusermat  skyboxMat, SHD_DIR+"skybox.vert", SHD_DIR+"skybox.frag"
+		gpmatprmt  skyboxMat, "u_diffuseTexture", skyboxTextureName, GPOBJ_MATOPT_CUBEMAP|GPOBJ_MATOPT_NOMIPMAP
+		; gpmatprm4  skyboxMat, "u_voffset", 0, 0.1, 0, 0
+		; gpmatstate skyboxMat, "depthTest", "false"
+		gpmatstate skyboxMat, "depthWrite", "false"
+		gpmatstate skyboxMat, "cullFaceSide", "FRONT"
+		gpbox obj_skybox,10000,0x6ba3e0, skyboxMat
+		setpos obj_skybox,0,0,0
+	return
+	; effekseer含めてHGIMG4の描画更新する関数
+	#deffunc _hg4_StartDraw int drawTarget, int drawOption, int efkOption, int viewPvtX, int viewPvtY, int viewSizeX, int viewSizeY
+		; ターゲット
+		; 	 0: 表示画面に直接描画
+		; 	 1~:バッファに描画(posetEFXなどで確保されていない場合にはエラーが出る)
+		; オプション　(描画速度にはあまり影響なさそう)
+		; 　-1:	標準gpdraw+エフェクト描画なし
+		; 　 0:	標準gpdraw+エフェクト描画あり
+		; 　 1~:オプションありgpdraw+エフェクト描画あり
+		; 描画処理
+		if (viewSizeX!=0 && viewSizeY!=0){
+			gpviewport viewPvtX,viewPvtY,viewSizeX,viewSizeY
+		}else{
+			gpviewport viewPvtX,viewPvtY			; ビューポート設定　分割対戦とかする場合にはこれを使う
+		}
+		gsel drawTarget
+		redraw 0			; 描画開始
+		if drawOption!=0 && drawOption!=(-1){
+			gpdraw drawOption	; シーンの描画
+		}else{
+			gpdraw
+		}
+	
+		if efkOption!=(-1){
+			#ifndef BUILD_TARGET_MOBILE
+			; エフェクトの描画
+			#endif
+		}
+	return
+	#define global hg4_StartDraw(%1,%2,%3=0,%4=0,%5=0,%6=0,%7=0) _hg4_StartDraw %1,%2,%3,%4,%5,%6,%7		; 引数省略の場合0,0が入る
+	; 描画完了とウエイトする関数　この関数前までに2DのGUI描画命令を行う
+	#define global hg4_FinishDraw	redraw 1:await 1000/60
+	; フレームレートを取得する関数
+	#defcfunc hg4_GetFps
+		getreq fps,SYSREQ_FPS
+	return fps
+	; 親オブジェクトに追従させる関数群　位置、角度、スケールのうちどれを追従させるか、相対姿勢をどう与えるかでバリエーション
+	#define global hg4_ObjChild_P(%1,%2) \
+		getposM   %1,tempObjChildX,tempObjChildY,tempObjChildZ					:\
+		setposM   %2,tempObjChildX,tempObjChildY,tempObjChildZ
+	#define global hg4_ObjChild_Q(%1,%2) \
+		getquatM  %1,tempObjChildX,tempObjChildY,tempObjChildZ,tempObjChildW	:\
+		setquatM  %2,tempObjChildX,tempObjChildY,tempObjChildZ,tempObjChildW
+	#define global hg4_ObjChild_S(%1,%2) \
+		getscaleM %1,tempObjChildX,tempObjChildY,tempObjChildZ					:\
+		setscaleM %2,tempObjChildX,tempObjChildY,tempObjChildZ
+	#define global hg4_ObjChild_PS(%1,%2) \
+		hg4_ObjChild_P %1,%2 :\
+		hg4_ObjChild_S %1,%2
+	#define global hg4_ObjChild_PQS(%1,%2) \
+		hg4_ObjChild_P %1,%2 :\
+		hg4_ObjChild_Q %1,%2 :\
+		hg4_ObjChild_S %1,%2
+#global
+
+; ポストエフェクト管理
+#module mod_postefx
+    ; ポストエフェクト機能
+		; 処理の流れ
+		; バッファ1を確保
+		; gpdrawをバッファ1に行ってもらう(別関数で)
+		; バッファ2~Nまでに適用されている各ポストエフェクトを実行
+		; メイン画面(ID0)にN番目の画面をコピーして完了
+
+	; ポストエフェクト初期化
+	#deffunc postefx_Init int __dispx,int __dispy,str _SHD_DIR
+        ; 入力変数をメンバ変数にコピー
+        _dispx = __dispx
+        _dispy = __dispy
+        SHD_DIR = _SHD_DIR
+	
+		; バッファー1にレンダリングするためバッファを確保
+		buffer 1,_dispx,_dispy,screen_offscreen
+		gsel 0
+	return
+	; ポストエフェクトを設定
+    #deffunc postefx_Set str shaderName,int targetBuffer
+        ; ポストエフェクトを設定する関数
+        ; 　第1引数：エフェクトシェーダのファイル名(最初に指定したSHD_DIRにある前提)
+        ; 　第2引数：処理順番　1以上の値を指定 全体で連番にすること　小さい順に処理される　前に指定された順番と同じ場合にはエフェクトが上書きされる
+        gpusershader SHD_DIR+"sprite.vert", SHD_DIR+shaderName, ""
+        buffer targetBuffer,_dispx,_dispy,screen_offscreen + screen_usergcopy
+        gsel 0
+
+        ; postEffectStack(processOrder)=0
+
+        ; sprite.vertを別のものが指定できるようにすれば，vertで任意の視点から(MVP行列をいじる)の奥行き(gl_fragcoordのzをappdataに入れる)を取得して，fragで画像に書き出すことは可能なはず？
+    return
+	; 画面転送(Blitと同等)
+    #deffunc _postefx_Blit int resBuffer, int destBuffer, int pvtX, int pvtY, double zoomX, double zoomY
+        ; blitに相当する関数
+        ; 最後にポストエフェクトを処理した画面からID0の画面に戻すときはこの関数を使う
+        gsel destBuffer
+		gmode 0
+        pos pvtX,pvtY
+        celput resBuffer,0,zoomX,zoomY
+    return
+	#define global postefx_Blit(%1,%2,%3=0,%4=0,%5=1.0,%6=1.0) _postefx_Blit %1,%2,%3,%4,%5,%6		; 引数省略の場合0,0が入る
+	; ポストエフェクトの範囲適用
+    #deffunc postefx_ApplyRange int startBuffer, int endBuffer
+        ; startBufferからendBufferまでの範囲のエフェクトを処理する関数
+		; ID1->ID2のコピーだけなら1,2、ID1->ID2,ID2->ID3のコピーなら1,3
+		; のように、最初のコピー元をstartに、最後のコピー先をendに入れる
+	    ; コンポジション処理の入らないエフェクトしかない場合にはこれで全部できる
+        for idx,startBuffer,endBuffer,1
+            postefx_Blit idx,idx+1,0,0,1.0,1.0
+            ; logmes idx
+        next
+    return
+#global
+
+
+
+
+
+; シャドウ表示モジュール
+#module mod_shadow
+	#deffunc sdw_GenerateInverseProjectionMatrix double FovY, double Aspect,double Near,double Far, array invProjMat
+		invProjMat(0,0)=tan(0.5*deg2rad(FovY))*Aspect
+		; invProjMat(0,0)=tan(0.5*deg2rad(FovY))
+		invProjMat(1,1)=tan(0.5*deg2rad(FovY))
+		invProjMat(2,3)=-(Far-Near)/(Near*Far)
+		invProjMat(3,2)=1.0
+		invProjMat(3,3)=1.0/Near
+	return
+
+	#deffunc sdw_GenerateEyeCoeffMatrix double coeff, array eyeMat
+		eyeMat(0,0)=coeff
+		eyeMat(1,1)=coeff
+		eyeMat(2,2)=coeff
+		eyeMat(3,3)=coeff
+	return
+
+	#deffunc sdw_GenerateTransformMatrix array q, double px, double py, double pz, array transMat
+		quat2rotMat q,transMat
+		transMat(0,3) = px
+		transMat(1,3) = py
+		transMat(2,3) = pz
+		transMat(3,3) = 1.0
+	return
+
+	#deffunc sdw_GenerateInverseTransformMatrix array q, double px, double py, double pz, array invTransMat
+		; rot^Tを計算
+		ddim tmpMat,3,3 : quat2rotMat q,tmpMat : MatrixCTranspose tmpMat
+		repeat 3
+			i=cnt
+			repeat 3
+				j=cnt
+				invTransMat(i,j) = tmpMat(i,j)
+			loop
+		loop
+		; 添え字はy,xになることに注意
+		invTransMat(0,3) = -vec_Dot3(px,py,pz, tmpMat(0,0),tmpMat(0,1),tmpMat(0,2))
+		invTransMat(1,3) = -vec_Dot3(px,py,pz, tmpMat(1,0),tmpMat(1,1),tmpMat(1,2))
+		invTransMat(2,3) = -vec_Dot3(px,py,pz, tmpMat(2,0),tmpMat(2,1),tmpMat(2,2))
+		invTransMat(3,3) = 1.0
+	return
+
+	#deffunc sdw_swapValue var valueA, var valueB
+		tmp=valueA
+		valueA=valueB
+		valueB=tmp
+	return
+
+	#deffunc sdw_FlattenMatrix array baseMat, array flattenMat
+		repeat 4
+			i=cnt
+			repeat 4
+				j=cnt
+				; 転置しなくても(i,j)でそのまま届くっぽい
+				flattenMat(4*i+j) = baseMat(i,j)
+				; flattenMat(4*i+j) = baseMat(j,i)
+			loop
+		loop
+	return
+#global
+

@@ -1,0 +1,85 @@
+#module obj_cameraEditor
+; Unityのエディタカメラと同等の動作をするカメラ
+; モード1：オービットカメラ　フォーカス点を中心に回転、ドラッグで画面平面方向に移動
+; モード2：フリーカメラ　自身を中心に回転、ドラッグでカメラ画面左右と画面奥行き方向に移動
+	#deffunc cameraED_Init
+		ddim focusPoint,3	; フォーカス点(ワールド座標)
+		ddim basePoint,3	    ; カメラ本体の原点(ワールド座標)
+
+		cameraDist = 5.0
+		theta = 0.2*M_PI : phi = M_PI*0.1
+		prevMouse = 0 : prevMouseR = 0
+		prevMouseX = 0 : prevMouseY = 0
+
+		mousePosX=0.0
+		mousePosY=0.0
+		mousePosBX=0.0
+		mousePosBY=0.0
+	return
+
+	#deffunc cameraED_Update int obj_camera, double cameraFovY, double cameraAspect, array base, array focus
+		; マウスドラッグ：回転または平行移動
+		mousePosBX=mousePosX : mousePosX=ginfo(0) : diffX = mousePosX-mousePosBX : diffXR = double(diffX) / 640.0
+		mousePosBY=mousePosY : mousePosY=ginfo(1) : diffY = mousePosY-mousePosBY : diffYR = double(diffY) / 480.0
+		if ( prevMouse != 0 ) {
+			; 左ドラッグ：視点回転
+			theta += -diffXR * 2.0
+			phi = limitf(phi+diffYR * 2.0, -M_PI*0.5-0.00001, M_PI*0.5-0.00001)
+		} else : if ( prevMouseR != 0 ) {
+			; 右ドラッグ：平行移動
+			ddim trs,4
+			trs(0) = -cameraDist * tan(cameraFovY) * 0.5 * cameraAspect * diffXR
+			trs(1) = 0.0
+			trs(2) = cameraDist * tan(cameraFovY) * 0.5 * diffYR
+			trs(3) = 1.0
+
+			; クォータニオン積で移動量をグローバル座標系に変換する
+			ddim q,4 : getquatM  obj_camera, q(0), q(1), q(2),q(3)
+			ddim qConj,4 : vec_Q2qconj qConj,q
+			ddim qTmp,4 : quatmul qConj, trs, qTmp
+			ddim trsLocGlb,4 : quatmul qTmp, q, trsLocGlb
+
+			focusPoint(0) += trsLocGlb(0)
+			focusPoint(1) += trsLocGlb(1)
+			focusPoint(2) += trsLocGlb(2)
+		} else : if ( prevMouseC != 0 ) {
+			; 中ドラッグ：平行移動(前後左右)
+			ddim trs,4
+			trs(0) = -cameraDist * tan(cameraFovY) * 0.5 * cameraAspect * diffXR
+			trs(1) = -cameraDist * tan(cameraFovY) * 0.5 * diffYR
+			trs(2) = 0.0
+			trs(3) = 1.0
+
+			; クォータニオン積で移動量をグローバル座標系に変換する
+			ddim q,4 : getquatM  obj_camera, q(0), q(1), q(2),q(3)
+			ddim qConj,4 : vec_Q2qconj qConj,q
+			ddim qTmp,4 : quatmul qConj, trs, qTmp
+			ddim trsLocGlb,4 : quatmul qTmp, q, trsLocGlb
+
+			focusPoint(0) += trsLocGlb(0)
+			focusPoint(1) += trsLocGlb(1)
+			focusPoint(2) += trsLocGlb(2)
+		}
+
+		; キー情報の更新
+		getkey prevMouse, 1
+		getkey prevMouseR, 2
+		getkey prevMouseC, 4
+		; prevMouseX = mousex
+		; prevMouseY = mousey
+	
+		; マウスホイール：フォーカス点へのズームインアウト
+		diffW = -mousew
+		diffWR = double(diffW) / 64.0// レート化しないと精度が落ちるらしい
+		cameraDist = limitf(cameraDist*(1.0 + 0.03*diffWR), 1.0, 1000.0)
+
+		; カメラのベース点を算出
+		basePoint(0) = focusPoint(0) + cameraDist*sin(theta)*cos(phi)
+		basePoint(1) = focusPoint(1) - cameraDist*cos(theta)*cos(phi)
+		basePoint(2) = focusPoint(2) + cameraDist*sin(phi)
+
+		; 出力変数に書き出し
+		repeat 3 : base(cnt)= basePoint(cnt) :  loop
+		repeat 3 : focus(cnt)=focusPoint(cnt) : loop
+	return
+#global

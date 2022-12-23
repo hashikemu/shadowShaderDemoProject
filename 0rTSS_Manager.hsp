@@ -1,0 +1,92 @@
+; ------------------------------------------------------------------------------
+; 0rGEL - 0rangetail Game Engine Library
+; Author:	0rangetail hashikemu(a.k.a karuua)
+; Title:	shadow shader prtotype demo
+; Date:		2022-12-24
+; ------------------------------------------------------------------------------
+
+; 共通パラメータ設定
+#packopt name shadowdemo
+; #packopt icon "icon.ico"
+#define global APP_TITLE "Shadow Shader Demo"
+#define global APP_VERSION "0.00 prototype 2022-12"
+; #define global BUILD_TARGET_MOBILE						; 有効な場合モバイル版ビルドになり、Android環境では使用できないライブラリなどが除外される
+
+#define global GLOBAL_FONT_GPB "Arial"
+; Scene enumration
+#enum SCENE0 = 0
+
+; ------------------------------------------------------------------------------
+; Plugin include
+; ------------------------------------------------------------------------------
+#ifndef BUILD_TARGET_MOBILE
+#endif
+	#include "hgimg4.as"
+	#include "hspmath.as"
+; ------------------------------------------------------------------------------
+; Module include
+; ------------------------------------------------------------------------------
+#ifndef BUILD_TARGET_MOBILE
+#endif
+	#include "lib/mod_orgel.hsp"				; 0rGEL - 0rangetail Game Engine Library
+goto *obj_scene_include_jump
+; ------------------------------------------------------------------------------
+; Object include
+; ------------------------------------------------------------------------------
+	#include "obj_camera_editor.hsp"
+; ------------------------------------------------------------------------------
+; Scene include
+; ------------------------------------------------------------------------------
+	#include "scene0.hsp"
+
+*obj_scene_include_jump
+; ------------------------------------------------------------------------------
+; Scene definition
+; ------------------------------------------------------------------------------
+	ldim sceneList,3,1											; シーン配列を1シーン分だけ定義
+	sceneList(0,0)=*scene0_init,*scene0_update,*scene0_destroy	; シーンの内容をラベル型配列変数に書き込み
+	scene_ChangeScene SCENE0,STATE_INIT							; 初期シーンを指定
+
+; ------------------------------------------------------------------------------
+; Config file load
+; ------------------------------------------------------------------------------
+	; ディレクトリ変数を定義
+	DEF_DIR = dirinfo(0)
+	SAV_DIR = "res/save/"
+	SHD_DIR = "res/shaders/"
+	CHR_DIR = "res/chr/"
+	TEX_DIR = "res/texture/"
+
+	; コンフィグ変数に展開
+	_dispx =			1600
+	_dispy =			900
+	fscrMode =			0
+	fscrScl =			1.0
+	post_efx_idx =		1
+	isDEBUG =			1
+	platformType =		xpf_GetPlatformType()
+
+; ------------------------------------------------------------------------------
+; Initialize special variables/modules
+; ------------------------------------------------------------------------------
+	isPostLaunch=1							; 起動直後か判定するフラグ変数
+	randomize								; 乱数シード値を変更
+
+; ------------------------------------------------------------------------------
+; Screen launch
+; ------------------------------------------------------------------------------
+	; プラットフォーム判別して画面表示を切り替え
+	; ウィンドウモード
+	screen 0,_dispx,_dispy,0
+
+	title APP_TITLE+" ver."+APP_VERSION
+	#ifdef BUILD_TARGET_MOBILE
+	title APP_TITLE+" ver."+APP_VERSION+" [MOBILE BUILD]"
+	#endif
+	
+; ------------------------------------------------------------------------------
+; Main game routine
+; ------------------------------------------------------------------------------
+	repeat 
+		gosub sceneList(scene_Get("State"),scene_Get("Num"))
+	loop

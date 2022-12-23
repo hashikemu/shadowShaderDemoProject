@@ -1,0 +1,200 @@
+; ------------------------------------------------------------------------------
+; Scene : #0
+; Title : ---
+; ------------------------------------------------------------------------------
+
+*scene0_init
+
+; -------------------調整パラメータ-------------------------
+shaderMode=0		; 0でシャドウ表示、1でデバッグ表示
+shadowRange=50.0	; シャドウマップ範囲
+lightDirX=0.0		; ライト方向ベクトル
+lightDirY=0.5
+lightDirZ=-1.0
+; ---------------------------------------------------------
+
+; 初期化処理
+	; hgimg4の初期化
+	hg4_Initialize
+
+	; カメラの生成
+	cameraFovY = 45.0
+	cameraAspect = double(_dispx)/double(_dispy)	; カメラアスペクトを指定
+	cameraNear = 0.5
+	cameraFar = 10000.0
+	hg4_GenerateCamera obj_camera,cameraFovY,cameraAspect,cameraNear,cameraFar
+
+	; ライトの生成
+	lightColor=1.0 : ambientColor=1.0
+	hg4_GenerateDirectionalLight obj_light,lightColor,ambientColor
+	setposM obj_light,0,0,0
+	gplookatM obj_light,lightDirX,lightDirY,lightDirZ
+	; ライトカメラを並行投影で作成
+	
+	gpnull obj_lightCamera
+	gpcamera obj_lightCamera,shadowRange,1.0,cameraNear,cameraFar,1
+	
+	; スカイボックスを生成
+	hg4_GenerateSkybox obj_skybox, SHD_DIR, TEX_DIR+"cubemap.png"
+	
+; システムをロード
+	cameraED_Init	; エディット用カメラ
+
+	; ポストエフェクトのロード
+	postefx_Init _dispx, _dispy, SHD_DIR	; 画面IDとその役割
+											; ID0:最終描画表示(プレイヤーに見えている画面　画面初期化で確保済み)
+											; ID1:バッファ描画(1回目にレンダリングする画面　postefxで確保済み)
+	switch post_efx_idx
+	case 1
+														; ID1:シェーディングまで実施した画面
+		buffer 2,_dispx,_dispy,		screen_offscreen	; ID2:シャドウジオメトリ(ライト視点の深度情報)
+		buffer 3,_dispx,_dispy,		screen_offscreen	; ID3:スクリーンジオメトリ(カメラ視点の深度情報)
+		buffer 4,_dispx,_dispy,		screen_offscreen	; ID4:
+        buffer 5,_dispx*2,_dispy*2,	screen_offscreen	; ID5:ID1,2,3,4の内容を一度まとめる画面
+		gpusershader SHD_DIR+"or_litShader.vert", SHD_DIR+"or_litShader.frag", ""
+        buffer 6,_dispx*2,_dispy*2,	screen_offscreen + screen_usergcopy	; ID6:ID5に対して合成を行う画面(あるいはLitShader)
+		gpgetmat litShaderMat,6, GPGETMAT_OPT_SCRMAT
+		logmes "litShaderMat : ID "+litShaderMat
+		gsel 0
+		swbreak
+	default
+		swbreak
+	swend
+
+
+; モデルロード
+	hg4_ModelLoad obj_tamane,CHR_DIR+"tamane2/tamane2.gpb","",0.01
+	hg4_ModelLoad obj_duck,CHR_DIR+"duck/duck.gpb","",5.0
+	setposM obj_duck,0,0,-5.0
+	hg4_ModelLoad obj_tamaneB,CHR_DIR+"tamane2/tamane2.gpb","",0.1
+	setposM obj_tamaneB,0,0,-30.0
+
+; シーン変更を発行
+	scene_ChangeScene SCENE0,STATE_UPDATE
+return
+
+
+
+*scene0_update
+	; ツールカメラの場合
+	cameraED_Update obj_camera,cameraFovY,cameraAspect,base,focus
+	vec_Copy3 baseED,base
+	vec_Copy3 focusED,focus
+	hg4_UpdateCamera obj_camera,		base(0),base(1),base(2),	focus(0),focus(1),focus(2), 0.0,0.0,1.0,		cameraFovY,cameraAspect,cameraNear,cameraFar
+	hg4_ObjChild_P obj_camera, obj_light
+	hg4_ObjChild_PQS obj_light, obj_lightCamera
+
+
+
+; 描画開始
+	switch post_efx_idx
+	case 1
+		; エフェクト更新
+		; 遅延シェーディング的発想で一度オフスクリーンバッファに描画
+		; 1バッファには1つしか描画できない、gcopy等で変倍コピーはできる
+		; なので、
+		; 1) バッファ1,2,3,4にアルベド、シャドウデプス,デプスをレンダリング(G-Buffer生成に相当)
+		; 2) gcopyでバッファ5(メイン画面の2倍サイズ)にバッファ1,2,3,4の内容をコピー
+		; 3) バッファ5→バッファ6へのコピータイミングでLitShader相当の内容を実施
+		; 4) バッファ6→メイン画面(ID0)へそのままコピー
+		#ifndef BUILD_TARGET_MOBILE
+		#endif
+		; 描画開始
+			setcolor obj_light, lightColor,	lightColor,	lightColor
+			hg4_StartDraw 1,0,						0	; HGIMG4の画面描画開始 第1引数=バッファID(ここでのみ物理更新)
+			setcolor obj_light, 0.0,		lightColor,	lightColor
+			; setcolor obj_light, lightColor,	lightColor, lightColor ; 有効にするとライト深度ではなくカラーが投影される
+			gpusecamera obj_lightCamera
+			hg4_StartDraw 2,GPDRAW_OPT_DRAWSCENE,	-1	; HGIMG4の画面描画開始 第1引数=バッファID
+			setcolor obj_light, lightColor,	0.0,		lightColor
+			gpusecamera obj_camera
+			hg4_StartDraw 3,GPDRAW_OPT_DRAWSCENE,	-1	; HGIMG4の画面描画開始 第1引数=バッファID
+			setcolor obj_light, 0.0,		lightColor,	lightColor
+			gpusecamera obj_camera
+			hg4_StartDraw 4,GPDRAW_OPT_DRAWSCENE,	-1	; HGIMG4の画面描画開始 第1引数=バッファID
+		
+		; G-Bufferを1つのバッファに集める
+		if (shaderMode==0){
+			gbufferZoomRate=1.0
+		}else{
+			gbufferZoomRate=0.5
+		}
+			gsel 5 : gmode 1
+			pos 0,0 : 						celput 1,0,gbufferZoomRate,gbufferZoomRate
+			pos gbufferZoomRate*_dispx,0 :	celput 2,0,gbufferZoomRate,gbufferZoomRate
+			pos 0,gbufferZoomRate*_dispy : 	celput 3,0,gbufferZoomRate,gbufferZoomRate
+			pos gbufferZoomRate*_dispx,gbufferZoomRate*_dispy : 	celput 4,0,gbufferZoomRate,gbufferZoomRate
+
+		; カメラプロジェクションからライトビューまでの変換行列を計算
+			rotMatDebug=""
+			; カメラプロジェクション逆行列
+			ddim invProjMat,4,4
+			sdw_GenerateInverseProjectionMatrix cameraFovY,cameraAspect,cameraNear,cameraFar,invProjMat
+			rotMatDebug += "invProjMat\n"+MatrixStrf("%s__",invProjMat)+"\n\n"
+
+			; カメラ姿勢の同次変換逆行列
+			ddim pCam,3 : getposM  obj_camera,pCam(0),pCam(1),pCam(2)
+			ddim qCam,4 : getquatM obj_camera,qCam(0),qCam(1),qCam(2),qCam(3)
+			ddim invCamMat,4,4 : sdw_GenerateInverseTransformMatrix qCam,pCam(0),pCam(1),pCam(2),invCamMat
+			sdw_swapValue invCamMat(1,0), invCamMat(2,0)
+			sdw_swapValue invCamMat(1,1), invCamMat(2,1)
+			sdw_swapValue invCamMat(1,2), invCamMat(2,2)
+			sdw_swapValue invCamMat(1,3), invCamMat(2,3)
+			rotMatDebug += "invCamMat\n"+MatrixStrf("%s__",invCamMat)+"\n\n"
+
+			; ライト姿勢の同次変換行列
+			ddim pLit,3 : getposM  obj_light,pLit(0),pLit(1),pLit(2)
+			ddim qLit,4 : getquatM obj_light, qLit(0),qLit(1),qLit(2),qLit(3)
+			ddim litViewMat,4,4 : sdw_GenerateTransformMatrix qLit,pLit(0),pLit(1),pLit(2),litViewMat
+			sdw_swapValue litViewMat(0,1), litViewMat(0,2)
+			sdw_swapValue litViewMat(1,1), litViewMat(1,2)
+			sdw_swapValue litViewMat(2,1), litViewMat(2,2)
+			sdw_swapValue litViewMat(3,1), litViewMat(3,2)
+			rotMatDebug += "litViewMat\n"+MatrixStrf("%s__",litViewMat)+"\n\n"
+
+			; スケール行列生成
+			ddim scaleMat,4,4 : sdw_GenerateEyeCoeffMatrix 2.0/shadowRange,scaleMat
+
+		; 変換行列を1次元配列に変換しシェーダーに設定
+			ddim flattenMatIP,16 : sdw_FlattenMatrix invProjMat,flattenMatIP
+			ddim flattenMatIV,16 : sdw_FlattenMatrix invCamMat,	flattenMatIV
+			ddim flattenMatLV,16 : sdw_FlattenMatrix litViewMat,flattenMatLV
+			ddim flattenMatSC,16 : sdw_FlattenMatrix scaleMat,	flattenMatSC
+			gpmatprm16 litShaderMat,"u_inverseProjectionMatrix",flattenMatIP,1
+			gpmatprm16 litShaderMat,"u_inverseViewMatrix",		flattenMatIV,1
+			gpmatprm16 litShaderMat,"u_lightViewMatrix",		flattenMatLV,1
+			gpmatprm16 litShaderMat,"u_scaleMatrix",			flattenMatSC,1
+
+		; シェーダー実行
+		if (shaderMode==0){
+			postefx_Blit 5,6				; litShader実行
+			postefx_Blit 6,0,0,0,0.5,0.5	; ID0の画面に描画結果を戻す
+		}else{
+			postefx_Blit 5,0
+		}
+		swbreak
+	default
+		hg4_StartDraw 0,-1								; ポストエフェクトなしのHGIMG4画面描画
+		swbreak
+	swend
+
+
+; UI：デバッグメッセージの作成
+	DBG_MSG = "Debug:\n"
+	DBG_MSG += ""+hg4_GetFps()+"fps\n"
+	; DBG_MSG += rotMatDebug
+
+	; HGIMG4のGPBフォント　英語のみ
+	setreq SYSREQ_USEGPBFONT,1
+	color 0,0,0 : font GLOBAL_FONT_GPB,20.0
+	pos 0,40
+	mes DBG_MSG
+	setreq SYSREQ_USEGPBFONT,0
+	
+; 描画終了
+	hg4_FinishDraw						; HGIMG4の画面描画完了
+return
+
+*scene0_destroy
+	scene_ChangeScene SCENE0,STATE_INIT
+return
