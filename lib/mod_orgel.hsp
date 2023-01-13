@@ -534,16 +534,81 @@ MatrixIni
 		setcolor %1, %2,%2,%2		:\
 		setdir %1, %3,%3,%3		:\
 		gpuselight %1				:\
-	; モデルをスケールを含めてロード
+	; モデルをスケールを含めてロード 同じモデルが読まれた場合クローンする
 	#deffunc hg4_ModelLoad var objid,str m_name,str m_node,double m_scl
-		m_base = dir_cur;DEF_DIR@
-		m_dir = getpath(m_name,32)				; HSP3.7beta4からモデルロード時カレントディレクトリを基準とする(hgimg3と同一)よう変更されたため
-		m_file = getpath(m_name,8+1)
-		chdir m_dir
-		gpload objid,m_file,m_node				; モデル読み込み
-		chdir m_base
+		cloneFlag=0
+		cloneIdx=0
+		repeat length(modelNameArray)
+			; 読み込み済みのモデルと一致するか探索
+			if m_name==modelNameArray(cnt) && m_node==modelNodeArray(cnt){
+			; if m_name==modelNameArray(cnt) {
+				cloneFlag=1
+				cloneIdx=cnt
+				break
+			}
+		loop
+		if cloneFlag==1{
+			gpclone objid,modelIDArray(cloneIdx)	; クローンする
+		}else{
+			#ifdef ORGEL_BEFORE_HSP37BETA4
+				gpload objid,m_name,m_node				; モデル読み込み(beta4より前のバージョン)
+			#else
+				m_base = dir_cur;DEF_DIR@
+				m_dir = getpath(m_name,32)				; HSP3.7beta4からモデルロード時カレントディレクトリを基準とする(hgimg3と同一)よう変更されたため
+				m_file = getpath(m_name,8+1)
+				chdir m_dir
+				gpload objid,m_file,m_node				; モデル読み込み
+				chdir m_base
+			#endif
+		}
+		#ifdef ORGEL_DEBUG_MSG_ENABLE
+		if cloneFlag==0 : logmes "MODEL:Load	(Name:"+m_name+", Node:"+m_node+", ID:"+objid+")"
+		if cloneFlag==1 : logmes "MODEL:Load	(Name:"+m_name+", Node:"+m_node+", ID:"+objid+")->CLONE"
+		#endif
 		
 		setscale objid,m_scl,m_scl,m_scl
+		; setobjmode objid, OBJ_WIRE
+		; setobjmode objid, OBJ_CLIP, 0				;クリッピングに対応させる
+
+
+		modelNameArray(modelLoadCnt)=m_name
+		modelNodeArray(modelLoadCnt)=m_node
+		modelIDArray(modelLoadCnt)=objid
+		modelLoadCnt++
+
+	return
+	; デバッグフラグに応じてコリジョンの表示モードを切り替えて物理設定
+	#deffunc hg4_gppbindMod int ID, double Mass, double Friction, int Type
+		isIdValid=0
+		modelIDIndex=0
+		repeat length(modelIDArray)
+			; 読み込み済みのモデルと一致するか探索
+			if ID==modelIDArray(cnt){
+				modelIDIndex=cnt
+				m_name=modelNameArray(cnt)
+				isIdValid=1
+				break
+			}
+		loop
+
+		if isIdValid==1{
+			logmes "MODEL:Bind	(Name:"+m_name+", ID:"+ID+")"
+			#ifdef ORGEL_BEFORE_HSP37BETA4
+				gppbind ID, Mass, Friction,Type
+			#else
+				m_base = dir_cur;DEF_DIR@
+				m_dir = getpath(m_name,32)				; HSP3.7beta4からモデルロード時カレントディレクトリを基準とする(hgimg3と同一)よう変更されたため
+				chdir m_dir
+				gppbind ID, Mass, Friction,Type
+				chdir m_base
+			#endif
+		}
+
+		if isCOLLISION_DEBUG@{
+			setobjmode 	 ID,OBJ_WIRE, 0
+		}else{
+			setobjmode 	 ID,OBJ_HIDE, 0
+		}
 	return
 	; カメラ位置，注視点，パラメータを更新する関数
 	#deffunc hg4_UpdateCamera var obj_camera, double cameraPosX, double cameraPosY, double cameraPosZ, double cameraLatX, double cameraLatY, double cameraLatZ,   double cameraUpX, double cameraUpY, double cameraUpZ,  double fovy, double ratio, double near, double far

@@ -61,6 +61,12 @@ lightDirZ=-1.0
 		swbreak
 	swend
 
+; レベルロード
+	hg4_ModelLoad obj_vLvl,LVL_DIR+"actStage/stagemodel.gpb","viz",0.2
+	setangM obj_vLvl,-0.3,0.5,0
+	hg4_ModelLoad obj_pLvl,LVL_DIR+"actStage/stagemodel.gpb","col",0.2
+	setangM obj_pLvl,-0.3,0.5,0
+	hg4_gppbindMod obj_pLvl, 0, 0.5,GPPBIND_MESH
 
 ; モデルロード
 	hg4_ModelLoad obj_tamane,CHR_DIR+"tamane2/tamane2.gpb","",0.01
@@ -68,6 +74,11 @@ lightDirZ=-1.0
 	setposM obj_duck,0,0,-5.0
 	hg4_ModelLoad obj_tamaneB,CHR_DIR+"tamane2/tamane2.gpb","",0.1
 	setposM obj_tamaneB,0,0,-30.0
+
+; コリジョン確認用モデルロード
+	hg4_ModelLoad obj_pDuck,CHR_DIR+"duck/duck.gpb","",1.0
+	setposM obj_pDuck,0,0,15.0
+	hg4_gppbindMod obj_pDuck,1.0,0.5,GPPBIND_MESH
 
 ; シーン変更を発行
 	scene_ChangeScene SCENE0,STATE_UPDATE
