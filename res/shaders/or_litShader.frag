@@ -62,7 +62,10 @@ void main(){
 	scrDepthPosLightView *= u_scaleMatrix;				// ライトビュー空間をライトプロジェクション空間へ変換(平行投影カメラなのでズーム値の逆数をかけるだけ)
 
 	float isShadowIgnore=0.0;
-	if ( abs(scrDepthPosLightView.x)>1.0 | abs(scrDepthPosLightView.y)>1.0 ){
+	if ( abs(scrDepthPosLightView.x)>1.0 ){
+		isShadowIgnore=1.0;
+	}
+	if ( abs(scrDepthPosLightView.y)>1.0 ){
 		isShadowIgnore=1.0;
 	}
 	scrDepthPosLightView.xy = clamp(scrDepthPosLightView.xy, -0.999,0.999);	// UV範囲の制限
