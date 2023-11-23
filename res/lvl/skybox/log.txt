@@ -1,0 +1,11 @@
+Encoding file: C:/Users/kentaro/OneDrive/Documents/TwinStickShooter/res/lvl/skybox/skybox.fbx
+Loading FBX file.
+Loading Scene.
+Triangulate.
+Load single node.
+#Load Mesh [Cube] skin:0
+Load Shapes.
+Load materials
+Loading animations.
+Optimizing GamePlay Binary.
+Saving binary file: C:/Users/kentaro/OneDrive/Documents/TwinStickShooter/res/lvl/skybox/skybox.gpb

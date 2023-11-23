@@ -123,6 +123,51 @@ varying vec2 v_texCoord1;
 
 
 void main(){
+	#if (DIRECTIONAL_LIGHT_COUNT > 0)
+
+	// シャドウマップ(ライトシャドウジオメトリ)
+	if (u_directionalLightColor[0].r == 0.0){
+		// NO_RECV_SHADOW
+		// NO_CAST_SHADOW
+		#if defined(NO_CAST_SHADOW)
+			gl_FragColor.rgba = vec4(compress24(sdwDepth2nld(v_sdwGeom.z-50.0)), 1.0);
+			return;
+			// discard;
+		#else
+			// Z成分のみをNLDに変換してから24bitにエンコード(アルファチャンネルは1以外だと後ろのオブジェクトの色が透けて見えてしまうため1固定)
+			gl_FragColor.rgba = vec4(compress24(sdwDepth2nld(v_sdwGeom.z)), 1.0);
+			return;
+		#endif
+	}
+
+	// デプスマップ(スクリーンジオメトリ)
+	if (u_directionalLightColor[0].g == 0.0){
+		// -1~1->0~1
+		// gl_FragColor.rgba = vec4((v_scrGeom.xyz/v_scrGeom.w +1.0)/2.0, 1.0);
+		gl_FragColor.rgba = vec4(compress16(litDepth2nld(v_scrGeom.w)), (v_scrGeom.z/v_scrGeom.w +1.0)/2.0, 1.0);
+		return;
+	}
+
+	// シャドウマップ(カメラシャドウジオメトリ)
+	if (u_directionalLightColor[0].b == 0.0){
+		#if defined(NO_RECV_SHADOW)
+			#if defined(NO_DEPTH)
+			discard;
+			#else
+			gl_FragColor.rgba = vec4(compress24(sdwDepth2nld(v_sdwGeom.z+50.0)), 1.0);
+			return;
+			#endif
+			// discard;
+		#else
+			// Z成分のみをNLDに変換してから24bitにエンコード(アルファチャンネルは1以外だと後ろのオブジェクトの色が透けて見えてしまうため1固定)
+			gl_FragColor.rgba = vec4(compress24(sdwDepth2nld(v_sdwGeom.z)), 1.0);
+			return;
+		#endif
+	}
+
+	#endif
+
+
 	// テクスチャかディフューズカラーで色を付ける
 	#if defined(TEXTURED)
 		#if defined(MIRRORTEX)
@@ -131,9 +176,9 @@ void main(){
 		_baseColor = texture2D(u_diffuseTexture, v_texCoord);
 		#endif
 
-		#if defined(SKYBOX)
-		_baseColor = textureCube(u_diffuseTexture, v_texCoord);
-		#endif
+		// #if defined(SKYBOX)
+		// _baseColor = textureCube(u_diffuseTexture, v_texCoord);
+		// #endif
 	#else
 		#if defined(VERTEX_COLOR)
 		_baseColor.rgb = v_color;
@@ -150,11 +195,11 @@ void main(){
 	#endif
 
 	// ライティングを適用
-	// #if defined(LIGHTING)
-	// gl_FragColor.rgb = getLitPixel();
-	// #else
+	#if defined(LIGHTING)
+	gl_FragColor.rgb = getLitPixel();
+	#else
 	gl_FragColor.rgb = _baseColor.rgb;
-	// #endif
+	#endif
 
 	// ライトマップを適用
 	#if defined(LIGHTMAP)
@@ -180,25 +225,17 @@ void main(){
 	#endif
 
 
-	#if (DIRECTIONAL_LIGHT_COUNT > 0)
+	// #if (DIRECTIONAL_LIGHT_COUNT > 0)
 
 	// ワールド空間ライト方向を用いたシェーディング
-	float diffuse = max(dot(normalize(v_normal), v_worldLitDir), 0.5);
-	gl_FragColor.rgb *=diffuse;
+	// float diffuse = max(dot(normalize(v_normal), v_worldLitDir), 0.5);
+	// gl_FragColor.rgb *=diffuse;
 
-	// シャドウマップ
-	if (u_directionalLightColor[0].r == 0.0){
-		// Z成分のみをNLDに変換してから24bitにエンコード(アルファチャンネルは1以外だと後ろのオブジェクトの色が透けて見えてしまうため1固定)
-		gl_FragColor.rgba = vec4(compress24(sdwDepth2nld(v_sdwGeom.z)), 1.0);
-	}
+	// getLitPixelで使用されるv_directionalLightDirectionと、自前計算しているワールド空間でのライト方向を減算して一致(黒画面)になることを確認した
+	// 結果から、u_directionalLightDirectionはView空間での情報で、v_directionalLightDirectionはワールド空間に変換済みの結果っぽい
+	// gl_FragColor.rgb = v_directionalLightDirection[0].xyz - v_worldLitDir.xyz;
 
-	// デプスマップ
-	if (u_directionalLightColor[0].g == 0.0){
-		// -1~1->0~1
-		// gl_FragColor.rgba = vec4((v_scrGeom.xyz/v_scrGeom.w +1.0)/2.0, 1.0);
-		gl_FragColor.rgba = vec4(compress16(litDepth2nld(v_scrGeom.w)), (v_scrGeom.z/v_scrGeom.w +1.0)/2.0, 1.0);
-	}
-	#endif
+	// #endif
 
 
 }

@@ -9,6 +9,7 @@
 ; ------------------------------------------------------------------------------
 #define global ORGEL_DEBUG_MSG_ENABLE	; コメントアウトでlogmesに情報を流さなくなる
 ; #define global ORGEL_BEFORE_HSP37BETA4	; コメントアウトでHSP3.7 beta4での仕様変更に対応
+; #define global ORGEL_USE_EFFEKSEER		; コメントアウトでEffekseer使用しない
 
 ; ------------------------------------------------------------------------------
 ; 基本機能
@@ -447,6 +448,10 @@ MatrixIni
 
 ; クォータニオン計算機能
 #module mod_quat
+	; #define global quat2rotMat(%1,%2) \
+	; 	%2(0,0)=1.0 - %1(1)*%1(1)*2.0 - %1(2)*%1(2)*2.0		: %2(1,0)=%1(0)*%1(1)*2.0 + %1(2)*%1(3)*2.0			: %2(2,0)=%1(0)*%1(2)*2.0 - %1(1)*%1(3)*2.0 :\
+	; 	%2(0,1)=%1(0)*%1(1)*2.0 - %1(2)*%1(3)*2.0			: %2(1,1)=1.0 - %1(0)*%1(0)*2.0 - %1(2)*%1(2)*2.0	: %2(2,1)=%1(1)*%1(2)*2.0 + %1(0)*%1(3)*2.0 :\
+	; 	%2(0,2)=%1(0)*%1(2)*2.0 + %1(1)*%1(3)*2.0			: %2(1,2)=%1(1)*%1(2)*2.0 - %1(0)*%1(3)*2.0			: %2(2,2)=1.0 - %1(0)*%1(0)*2.0 - %1(1)*%1(1)*2.0
 	#deffunc quat2rotMat array q, array rot
 		x=q(0) : y=q(1) : z=q(2) : w=q(3)
 		xx2=x*x*2.0
@@ -462,12 +467,103 @@ MatrixIni
 		rot(0,1)=xy2 - zw2			: rot(1,1)=1.0 - xx2 - zz2	: rot(2,1)=yz2 + xw2
 		rot(0,2)=xz2 + yw2			: rot(1,2)=yz2 - xw2		: rot(2,2)=1.0 - xx2 - yy2
 	return
+	; #deffunc quat2rotMatNew array q, array rot
+	; 	x=q(0) : y=q(1) : z=q(2) : w=q(3)
+	; 	xx2=x*x*2.0
+	; 	yy2=y*y*2.0
+	; 	zz2=z*z*2.0
+	; 	xy2=x*y*2.0
+	; 	yz2=y*z*2.0
+	; 	zw2=z*w*2.0
+	; 	xw2=x*w*2.0
+	; 	xz2=x*z*2.0
+	; 	yw2=y*w*2.0
+	; 	ww2=w*w*2.0
+	; 	rot(0,0)=ww2 + xx2 - 1.0	: rot(1,0)=xy2 - zw2		: rot(2,0)=xz2 + yw2
+	; 	rot(0,1)=xy2 + zw2			: rot(1,1)=ww2 + yy2 - 1.0	: rot(2,1)=yz2 - xw2
+	; 	rot(0,2)=xz2 - yw2			: rot(1,2)=yz2 + xw2		: rot(2,2)=ww2 + zz2 - 1.0
+	; return
+	#deffunc rotMat2quat array R, array q
+		// 最大成分を検索
+		ddim elem,4 // 0:x, 1:y, 2:z, 3:w
+		elem(0) =  R(0,0) - R(1,1) - R(2,2) + 1.0;
+		elem(1) = -R(0,0) + R(1,1) - R(2,2) + 1.0;
+		elem(2) = -R(0,0) - R(1,1) + R(2,2) + 1.0;
+		elem(3) =  R(0,0) + R(1,1) + R(2,2) + 1.0;
+
+		biggestIndex = 0;
+		for i,1,4,1
+			if ( elem(i) > elem(biggestIndex) ) : biggestIndex = i;
+		next
+
+		if ( elem(biggestIndex) < 0.0 ) : return // 引数の行列に間違いあり！
+
+		// 最大要素の値を算出
+		ddim q,4
+		v = sqrt( elem(biggestIndex) ) * 0.5;
+		q(biggestIndex) = v;
+		; logmes v
+		mult = 0.25 / v;
+
+		switch biggestIndex
+		case 0 // x
+			q(1) = (R(0,1) + R(1,0)) * mult;
+			q(2) = (R(2,0) + R(0,2)) * mult;
+			q(3) = (R(1,2) - R(2,1)) * mult;
+			swbreak;
+		case 1 // y
+			q(0) = (R(0,1) + R(1,0)) * mult;
+			q(2) = (R(1,2) + R(2,1)) * mult;
+			q(3) = (R(2,0) - R(0,2)) * mult;
+			swbreak;
+		case 2 // z
+			q(0) = (R(2,0) + R(0,2)) * mult;
+			q(1) = (R(1,2) + R(2,1)) * mult;
+			q(3) = (R(0,1) - R(1,0)) * mult;
+			swbreak;
+		case 3 // w
+			q(0) = (R(1,2) - R(2,1)) * mult;
+			q(1) = (R(2,0) - R(0,2)) * mult;
+			q(2) = (R(0,1) - R(1,0)) * mult;
+			swbreak;
+		swend
+	return
 	#define global quatmul(%1,%2,%3) \
 		ddim %3,4 :\
 		%3(0) =  %2(3)*%1(0)-%2(2)*%1(1)+%2(1)*%1(2)+%2(0)*%1(3) :\
 		%3(1) =  %2(2)*%1(0)+%2(3)*%1(1)-%2(0)*%1(2)+%2(1)*%1(3) :\
 		%3(2) = -%2(1)*%1(0)+%2(0)*%1(1)+%2(3)*%1(2)+%2(2)*%1(3) :\
 		%3(3) = -%2(0)*%1(0)-%2(1)*%1(1)-%2(2)*%1(2)+%2(3)*%1(3)
+		; #deffunc quatmul array p, array q, array qr
+		; 	; クォータニオン積　q*pを計算してqrに出力(qr=q*p)　すでにp回っているものをさらにq回すイメージらしい
+		; 	; (→STではqにベース，pに回転量を入れると上手く動く　なんかおかしいが動いてるのでこれで対処)
+		; 	; (入力順が表記と真逆なので違和感あるがこれは設計ミス…)
+		; 	ddim qr,4
+		; 	qr(0) =  q(3)*p(0)-q(2)*p(1)+q(1)*p(2)+q(0)*p(3)
+		; 	qr(1) =  q(2)*p(0)+q(3)*p(1)-q(0)*p(2)+q(1)*p(3)
+		; 	qr(2) = -q(1)*p(0)+q(0)*p(1)+q(3)*p(2)+q(2)*p(3)
+		; 	qr(3) = -q(0)*p(0)-q(1)*p(1)-q(2)*p(2)+q(3)*p(3)
+		; return
+	#define global quat2halfTH(%1,%2,%3) \
+		ddim %3,3 :\
+		if %2(0)!=0.0 { %3(0)=atan(%1(0)/%2(0),%1(3)) } :\
+		if %2(1)!=0.0 { %3(1)=atan(%1(1)/%2(1),%1(3)) } :\
+		if %2(2)!=0.0 { %3(2)=atan(%1(2)/%2(2),%1(3)) }
+		; #deffunc quat2halfTH array q, array a, array hth
+		; 	ddim hth,3
+		; 	if a(0)!=0.0 : hth(0)=atan(q(0)/a(0),q(3))
+		; 	if a(1)!=0.0 : hth(1)=atan(q(1)/a(1),q(3))
+		; 	if a(2)!=0.0 : hth(2)=atan(q(2)/a(2),q(3))
+		; return
+	#deffunc halfTH2theta var hth, var th
+		th = 0.0
+		if absf(hth*2.0)>PI{
+			th = 2.0*PI - absf(hth*2.0)
+			if hth>0.0 : th=-th
+		}else{
+			th = hth*2.0
+		}
+	return
 #global
 
 
@@ -501,10 +597,7 @@ MatrixIni
 		setreq SYSREQ_MAXOBJ,2048					; オブジェクト最大数を設定　大きくしすぎるとフレームレート低下する
 		gpreset 0									; HGIMG4を初期化
 		setreq SYSREQ_LOGWRITE,1					; 終了時ログ出力設定
-		setcls CLSMODE_SOLID, $000000;6ba3e0		; 背景を初期化
-	
-		#ifndef BUILD_TARGET_MOBILE
-		#endif
+		setcls CLSMODE_SOLID, $FFFFFF;000000;6ba3e0		; 背景を初期化
 
 		modelLoadCnt=0
 	return
@@ -516,28 +609,49 @@ MatrixIni
 		gpnull %1 :\
 		gpcamera %1,%2,%3,%4,%5 :\
 		gpusecamera %1 :\
-	; 独自定義ディレクショナルライトの初期化
-		; lit=0.2
-		; amb=1.0
-		; ヌルノードを生成する	
-		; ライトとして登録する		
-		; ライト位置設定		
-		; ライト角度設定		
-		; ライトカラーを設定　ライトの色(強さ)を決める		
-		; アンビエントカラーを設定　環境光の色を決める		
-		; デフォルトのライトに設定
-	#define global hg4_GenerateDirectionalLight(%1,%2,%3) \
-		gpnull %1						:\
-		gplight %1, GPOBJ_LGTOPT_NORMAL	:\
-		setpos %1,10,10,0		:\
-		setang %1,-1.8,0,0			:\
-		setcolor %1, %2,%2,%2		:\
-		setdir %1, %3,%3,%3		:\
-		gpuselight %1				:\
+	; ビルトインディレクショナルライトの設定
+	#deffunc hg4_GenerateLight var obj_light, str type, double litR, double litG, double litB, double ambR, double ambG, double ambB, double range, double inner, double outer
+		if type=="directionalBuiltin"{
+			obj_light = GPOBJ_LIGHT
+		}else{
+			gpnull obj_light
+			if type=="directional" : gplight obj_light, 0				; 0=GPOBJ_LGTOPT_NORMAL
+			if type=="point" : gplight obj_light, 1, range				; 1=GPOBJ_LGTOPT_POINT
+			if type=="spot" : gplight obj_light, 2, range,inner,outer	; 2=GPOBJ_LGTOPT_SPOT
+		}
+
+		setpos obj_light,10,10,0
+		setang obj_light,-1.8,0,0
+		setcolor obj_light, litR,litG,litB
+		setdir obj_light, ambR,ambG,ambB
+
+		if type!="directionalBuiltin" : gpuselight obj_light
+	return
+	; 独自定義スカイボックスの生成
+	#deffunc hg4_GenerateSkybox var obj_skybox, str SHD_DIR, str skyboxTextureName
+		; スカイボックスを生成
+		gpload obj_skybox,LVL_DIR@+"skybox/skybox",""
+		gpnodeinfo skyboxProxyMat,obj_skybox,GPNODEINFO_MATERIAL,"Cube"
+
+		gptexmat cubemapMat,TEX_DIR@+"skybox.png",GPOBJ_MATOPT_CUBEMAP		; 適当なマテリアルでCUBEMAP形式でロードしておくと以後すべてフォールバックで使われるっぽい
+		gptexmat skyboxMat, TEX_DIR@+"skybox_copy.png",GPOBJ_MATOPT_NOMIPMAP
+		; gpmatprmt skyboxMat,"u_diffuseTexture",TEX_DIR@+"skybox.png",GPOBJ_MATOPT_NOMIPMAP
+		gpmatprmp skyboxProxyMat,"u_diffuseTexture",skyboxMat
+	return
+	; デバッグ用箱の生成
+	#deffunc hg4_GenerateDebugBox var boxID, double px,double py,double pz, double sx,double sy,double sz, double rx,double ry,double rz
+		gpbox 		box,	1,0x555555
+		setscaleM 	box,	sx,sy,sz
+		setposM		box, 	px,py,pz
+		setangM		box, 	rx,ry,rz
+		setobjmode 	box,	OBJ_WIRE,0
+		boxID =     box
+    return
 	; モデルをスケールを含めてロード 同じモデルが読まれた場合クローンする
 	#deffunc hg4_ModelLoad var objid,str m_name,str m_node,double m_scl
 		cloneFlag=0
 		cloneIdx=0
+		logmes "MODEL:StartLoad	(Name:"+m_name+", Node:"+m_node+")"
 		repeat length(modelNameArray)
 			; 読み込み済みのモデルと一致するか探索
 			if m_name==modelNameArray(cnt) && m_node==modelNodeArray(cnt){
@@ -553,12 +667,17 @@ MatrixIni
 			#ifdef ORGEL_BEFORE_HSP37BETA4
 				gpload objid,m_name,m_node				; モデル読み込み(beta4より前のバージョン)
 			#else
-				m_base = dir_cur;DEF_DIR@
-				m_dir = getpath(m_name,32)				; HSP3.7beta4からモデルロード時カレントディレクトリを基準とする(hgimg3と同一)よう変更されたため
-				m_file = getpath(m_name,8+1)
-				chdir m_dir
-				gpload objid,m_file,m_node				; モデル読み込み
-				chdir m_base
+				; #ifdef BUILD_TARGET_MOBILE
+				; #else
+					m_base = dir_cur;DEF_DIR@
+					m_dir = getpath(m_name,32)				; HSP3.7beta4からモデルロード時カレントディレクトリを基準とする(hgimg3と同一)よう変更されたため
+					m_file = getpath(m_name,8+1)
+					; logmes "MODEL:StartChDir:"+m_dir+""
+					chdir m_dir
+					; logmes "MODEL:EndChDir:"+m_dir+""
+					gpload objid,m_file,m_node				; モデル読み込み
+					chdir m_base
+				; #endif
 			#endif
 		}
 		#ifdef ORGEL_DEBUG_MSG_ENABLE
@@ -622,22 +741,17 @@ MatrixIni
 		; HGIMG4のカメラの位置と注視点を更新
 		setposM obj_camera,   cameraPosX, cameraPosY, cameraPosZ
 		gplookatM obj_camera, cameraLatX, cameraLatY, cameraLatZ
+		sttcameraLatX = cameraLatX : sttcameraLatY = cameraLatY : sttcameraLatZ = cameraLatZ
 	
-		#ifndef BUILD_TARGET_MOBILE
+		#ifdef ORGEL_USE_EFFEKSEER
+		; エフェクトのカメラの位置と注視点を設定(数学座標系ではないので変換して代入)
 		#endif
 	return
-	; 独自定義スカイボックスの生成
-	#deffunc hg4_GenerateSkybox var obj_skybox, str SHD_DIR, str skyboxTextureName
-		; スカイボックスを生成
-		; gpusermat  skyboxMat, SHD_DIR+"or_std.vert", SHD_DIR+"or_std.frag","LIGHTING;DIRECTIONAL_LIGHT_COUNT 1;TEXTURED;SKYBOX",-1,0
-		gpusermat  skyboxMat, SHD_DIR+"skybox.vert", SHD_DIR+"skybox.frag"
-		gpmatprmt  skyboxMat, "u_diffuseTexture", skyboxTextureName, GPOBJ_MATOPT_CUBEMAP|GPOBJ_MATOPT_NOMIPMAP
-		; gpmatprm4  skyboxMat, "u_voffset", 0, 0.1, 0, 0
-		; gpmatstate skyboxMat, "depthTest", "false"
-		gpmatstate skyboxMat, "depthWrite", "false"
-		gpmatstate skyboxMat, "cullFaceSide", "FRONT"
-		gpbox obj_skybox,10000,0x6ba3e0, skyboxMat
-		setpos obj_skybox,0,0,0
+	; カメラ注視点を取得する関数
+	#deffunc hg4_GetCameraLookAt var varCameraLatX, var varCameraLatY, var varCameraLatZ
+		varCameraLatX = sttcameraLatX
+		varCameraLatY = sttcameraLatY
+		varCameraLatZ = sttcameraLatZ
 	return
 	; effekseer含めてHGIMG4の描画更新する関数
 	#deffunc _hg4_StartDraw int drawTarget, int drawOption, int efkOption, int viewPvtX, int viewPvtY, int viewSizeX, int viewSizeY
@@ -663,7 +777,7 @@ MatrixIni
 		}
 	
 		if efkOption!=(-1){
-			#ifndef BUILD_TARGET_MOBILE
+			#ifdef ORGEL_USE_EFFEKSEER
 			; エフェクトの描画
 			#endif
 		}
@@ -692,6 +806,28 @@ MatrixIni
 		hg4_ObjChild_P %1,%2 :\
 		hg4_ObjChild_Q %1,%2 :\
 		hg4_ObjChild_S %1,%2
+	#deffunc hg4_ObjChild_RotTrs_pInfo 			array _p, array _s, array _rot, var childID, double xrad, double yrad, double zrad, double xtrs, double ytrs, double ztrs
+		; ローカル回転行列 間違えてXYZ回転ではなくZYX回転になってるっぽい…
+		six=sin(xrad) : cox=cos(xrad)
+		siy=sin(yrad) : coy=cos(yrad)
+		siz=sin(zrad) : coz=cos(zrad)
+		ddim rotXYZ,3,3
+		rotXYZ(0,0) = coy*coz				: rotXYZ(1,0) =  -coy*siz				: rotXYZ(2,0) =	 siy
+		rotXYZ(0,1) = cox*siz + coz*six*siy	: rotXYZ(1,1) =   cox*coz - six*siy*siz	: rotXYZ(2,1) =	-coy*six
+		rotXYZ(0,2) = six*siz - cox*coz*siy	: rotXYZ(1,2) =   coz*six + cox*siy*siz	: rotXYZ(2,2) =	 cox*coy
+	
+		; グローバル回転行列を求めてからクォータニオンに変換
+		MatrixMul3x3by3x3T rotGlb, _rot,rotXYZ
+		rotMat2quat rotGlb, qGlb
+	
+		; ボディ回転行列でローカル移動量を座標変換してから，ボディのグローバル位置を加算
+		ddim localPos,3 : localPos(0)=xtrs : localPos(1)=ytrs : localPos(2)=ztrs 	; これは縦ベクトルになる
+		ddim trsLocGlb,3 : MatrixMul trsLocGlb, _rot, localPos
+
+		setposM 	childID, trsLocGlb(0)+_p(0),trsLocGlb(1)+_p(1),trsLocGlb(2)+_p(2)
+		setquatM 	childID, qGlb(0),qGlb(1),qGlb(2),qGlb(3)
+		setscaleM 	childID, _s(0),_s(1),_s(2)
+	return
 #global
 
 ; ポストエフェクト管理
@@ -756,6 +892,15 @@ MatrixIni
 
 ; シャドウ表示モジュール
 #module mod_shadow
+	#deffunc sdw_GenerateProjectionMatrix double FovY, double Aspect,double Near,double Far, array projMat
+		; projMat(0,0)=1.0/( tan(0.5*deg2rad(FovY))/Aspect )
+		projMat(0,0)=1.0/( tan(0.5*deg2rad(FovY)) )
+		projMat(1,1)=1.0/( tan(0.5*deg2rad(FovY)) )
+		projMat(2,2)=Far/(Far-Near)
+		projMat(2,3)=1.0
+		projMat(3,2)=-(Near*Far)/(Far-Near)
+	return
+
 	#deffunc sdw_GenerateInverseProjectionMatrix double FovY, double Aspect,double Near,double Far, array invProjMat
 		invProjMat(0,0)=tan(0.5*deg2rad(FovY))*Aspect
 		; invProjMat(0,0)=tan(0.5*deg2rad(FovY))
@@ -803,6 +948,36 @@ MatrixIni
 		valueB=tmp
 	return
 
+	#deffunc sdw_GenerateRotMatFromAxisAngle double xrad, double yrad, double zrad, array rotXYZ
+		; ローカル回転行列 間違えてXYZ回転ではなくZYX回転になってるっぽい…
+		six=sin(xrad) : cox=cos(xrad)
+		siy=sin(yrad) : coy=cos(yrad)
+		siz=sin(zrad) : coz=cos(zrad)
+		; ddim rotXYZ,3,3
+		rotXYZ(0,0) = coy*coz				: rotXYZ(1,0) =  -coy*siz				: rotXYZ(2,0) =	 siy
+		rotXYZ(0,1) = cox*siz + coz*six*siy	: rotXYZ(1,1) =   cox*coz - six*siy*siz	: rotXYZ(2,1) =	-coy*six
+		rotXYZ(0,2) = six*siz - cox*coz*siy	: rotXYZ(1,2) =   coz*six + cox*siy*siz	: rotXYZ(2,2) =	 cox*coy
+	return
+
+	#deffunc sdw_InvertXAxisTrsMatrix array baseMat
+		baseMat(0,1)*=-1.0
+		baseMat(0,2)*=-1.0
+		baseMat(1,0)*=-1.0
+		baseMat(2,0)*=-1.0
+	return
+	#deffunc sdw_InvertYAxisTrsMatrix array baseMat
+		baseMat(0,1)*=-1.0
+		baseMat(1,0)*=-1.0
+		baseMat(2,1)*=-1.0
+		baseMat(1,2)*=-1.0
+	return
+	#deffunc sdw_InvertZAxisTrsMatrix array baseMat
+		baseMat(0,2)*=-1.0
+		baseMat(1,2)*=-1.0
+		baseMat(2,0)*=-1.0
+		baseMat(2,1)*=-1.0
+	return
+
 	#deffunc sdw_FlattenMatrix array baseMat, array flattenMat
 		repeat 4
 			i=cnt
@@ -813,6 +988,68 @@ MatrixIni
 				; flattenMat(4*i+j) = baseMat(j,i)
 			loop
 		loop
+	return
+
+
+
+	
+	#deffunc sdw_Update int _dispx,int _dispy, double cameraFovY,double cameraAspect,double cameraNear,double cameraFar, int obj_camera,int obj_light,double shadowRange, int litShaderMat
+		; G-Bufferを1つのバッファに集める
+			#const gbufferZoomRate 1.0
+			; #const gbufferZoomRate 0.5
+			gsel 5 : gmode 1
+			pos 0,0 : 							celput 1,0,gbufferZoomRate,gbufferZoomRate
+			pos gbufferZoomRate*_dispx,0 :		celput 2,0,gbufferZoomRate,gbufferZoomRate
+			pos 0,1.0*gbufferZoomRate*_dispy : 	celput 3,0,gbufferZoomRate,gbufferZoomRate
+			pos 0,2.0*gbufferZoomRate*_dispy : 	celput 4,0,gbufferZoomRate,gbufferZoomRate
+
+		; カメラプロジェクションからライトビューまでの変換行列を計算
+			rotMatDebug=""
+			; カメラプロジェクション逆行列
+			ddim invProjMat,4,4
+			sdw_GenerateInverseProjectionMatrix cameraFovY,cameraAspect,cameraNear,cameraFar,invProjMat
+			rotMatDebug += "invProjMat\n"+MatrixStrf("%s__",invProjMat)+"\n\n"
+
+			; カメラ姿勢の同次変換逆行列
+			ddim pCam,3 : getposM  obj_camera,pCam(0),pCam(1),pCam(2)
+			ddim qCam,4 : getquatM obj_camera,qCam(0),qCam(1),qCam(2),qCam(3)
+			; ddim invCamMat,4,4 : sdw_GenerateInverseTransformMatrix qCam,pCam(0),pCam(1),pCam(2),invCamMat
+			ddim invCamMat,4,4 : sdw_GenerateInverseTransformMatrix qCam,0,0,0,invCamMat	; 計算時に平行移動成分が反映されてないっぽいので0とした
+			sdw_swapValue invCamMat(1,0), invCamMat(2,0)
+			sdw_swapValue invCamMat(1,1), invCamMat(2,1)
+			sdw_swapValue invCamMat(1,2), invCamMat(2,2)
+			sdw_swapValue invCamMat(1,3), invCamMat(2,3)
+			rotMatDebug += "invCamMat\n"+MatrixStrf("%s__",invCamMat)+"\n\n"
+
+			; ライト姿勢の同次変換行列
+			ddim pLit,3 : getposM  obj_light,pLit(0),pLit(1),pLit(2)
+			ddim qLit,4 : getquatM obj_light, qLit(0),qLit(1),qLit(2),qLit(3)
+			; ddim litViewMat,4,4 : sdw_GenerateTransformMatrix qLit,pLit(0),pLit(1),pLit(2),litViewMat
+			ddim litViewMat,4,4 : sdw_GenerateTransformMatrix qLit,0,0,0,litViewMat	; 計算時に平行移動成分が反映されてないっぽいので0とした
+			sdw_swapValue litViewMat(0,1), litViewMat(0,2)
+			sdw_swapValue litViewMat(1,1), litViewMat(1,2)
+			sdw_swapValue litViewMat(2,1), litViewMat(2,2)
+			sdw_swapValue litViewMat(3,1), litViewMat(3,2)
+			rotMatDebug += "litViewMat\n"+MatrixStrf("%s__",litViewMat)+"\n\n"
+
+			; スケール行列生成
+			ddim scaleMat,4,4 : sdw_GenerateEyeCoeffMatrix 2.0/shadowRange,scaleMat
+
+			; ライト->カメラの移動量ベクトル
+			ddim litCamVec,3 : litCamVec(0)=pCam(0)-pLit(0) : litCamVec(1)=pCam(1)-pLit(1) : litCamVec(2)=pCam(2)-pLit(2)
+			rotMatDebug += "litCamVec\n"+MatrixStrf("%s__",litCamVec)+"\n\n"
+
+		; 変換行列を1次元配列に変換しシェーダーに設定
+			ddim flattenMatIP,16 : sdw_FlattenMatrix invProjMat,flattenMatIP
+			ddim flattenMatIV,16 : sdw_FlattenMatrix invCamMat,	flattenMatIV
+			ddim flattenMatLV,16 : sdw_FlattenMatrix litViewMat,flattenMatLV
+			ddim flattenMatSC,16 : sdw_FlattenMatrix scaleMat,	flattenMatSC
+			gpmatprm16 litShaderMat,"u_inverseProjectionMatrix",flattenMatIP,1
+			gpmatprm16 litShaderMat,"u_inverseViewMatrix",		flattenMatIV,1
+			gpmatprm   litShaderMat,"u_litToCameraVec",	litCamVec(0), litCamVec(1), litCamVec(2)
+			gpmatprm16 litShaderMat,"u_lightViewMatrix",		flattenMatLV,1
+			gpmatprm16 litShaderMat,"u_scaleMatrix",			flattenMatSC,1
+			gpmatprm1  litShaderMat,"u_shadowBias", 0.02
 	return
 #global
 

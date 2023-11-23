@@ -1,5 +1,5 @@
 
-// もとと同じだが，一応fragと名前を合わせて別ファイルとした
+// ワールド空間向けに計算するよう変更
 #if defined(BUMPED)
 void applyLight(vec4 position, mat3 tangentSpaceTransformMatrix)
 {

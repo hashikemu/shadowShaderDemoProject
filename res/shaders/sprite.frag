@@ -1,17 +1,14 @@
-#ifdef OPENGL_ES
-#extension GL_OES_standard_derivatives : enable
+#if defined(OPENGL_ES) || defined(GL_ES)
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
 #else
 precision mediump float;
 #endif
-#else
-precision mediump float;
 #endif
 
 ///////////////////////////////////////////////////////////
 // Uniforms
-uniform sampler2D u_texture;
+uniform sampler2D u_diffuseTexture;
 
 ///////////////////////////////////////////////////////////
 // Varyings
@@ -21,12 +18,5 @@ varying vec4 v_color;
 
 void main()
 {
-    // gl_FragColor.a = _baseColor.a;
-
-    // #if defined(TEXTURE_DISCARD_ALPHA)
-    // if (gl_FragColor.a < 0.5)
-    //     discard;
-    // #endif
-
-    gl_FragColor = v_color * texture2D(u_texture, v_texCoord);
+    gl_FragColor = v_color * texture2D(u_diffuseTexture, v_texCoord);
 }

@@ -2,13 +2,17 @@
 
 
 #define LIT_DEPTH_NEAR				(0.5)
-#define LIT_DEPTH_FAR				(2000.0)
+#define LIT_DEPTH_FAR				(200.0)
+#define SHADOW_DEPTH_NEAR			(-100.0)
+#define SHADOW_DEPTH_FAR			(100.0)
+// #define LIT_DEPTH_NEAR				(0.5)
+// #define LIT_DEPTH_FAR				(2000.0)
+// #define SHADOW_DEPTH_NEAR			(-500.0)
+// #define SHADOW_DEPTH_FAR			(500.0)
 #define LIT_DEPTH_RANGE				(LIT_DEPTH_FAR - LIT_DEPTH_NEAR)
-#define SHADOW_DEPTH_NEAR			(-1000.0)
-#define SHADOW_DEPTH_FAR			(1000.0)
 #define SHADOW_DEPTH_RANGE			(SHADOW_DEPTH_FAR - SHADOW_DEPTH_NEAR)
-#define SHADOW_PROJ_WORLD_RANGE		(50.0/2.0)
 
+#define SHADOW_SOFT_SAMPLING_PTB	(0.0005)
 
 float sdwDepth2nld( in float depth )
 {
@@ -28,6 +32,10 @@ float litDepth2nld( in float depth )
 float litNld2depth( in float nld )
 {
 	return nld *LIT_DEPTH_RANGE + LIT_DEPTH_NEAR;
+}
+
+float sigmoid( float value, float gain ){
+	return 1.0 / ( 1.0 + exp(-gain * value ) );
 }
 
 

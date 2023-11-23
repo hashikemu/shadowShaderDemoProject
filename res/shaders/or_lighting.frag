@@ -2,7 +2,7 @@
 // 元のシェーダーから書き換え　シェードとスペキュラーの強さを独立して変更できるようにした
 vec3 computeLighting(vec3 normalVector, vec3 lightDirection, vec3 lightColor, float attenuation,float attenuation2)
 {
-    float diffuse = max(dot(normalVector, lightDirection), 0.0);
+    float diffuse = max(dot(normalVector, lightDirection), 0.0); //diffuseの下限調整できるといいかも
      vec3 diffuseColor = lightColor * _baseColor.rgb * diffuse * attenuation;
 
     #if defined(SPECULAR)
@@ -51,7 +51,7 @@ vec3 getLitPixel()
         #else
         vec3 lightDirection = normalize(u_directionalLightDirection[i] * 2.0);
         #endif 
-        combinedColor += computeLighting(normalVector, -lightDirection, u_directionalLightColor[i], 1.0, 0.5);
+        combinedColor += computeLighting(normalVector, -lightDirection, u_directionalLightColor[i], 1.0, 0.15);
     }
     #endif
 
@@ -61,7 +61,7 @@ vec3 getLitPixel()
     {
         vec3 ldir = v_vertexToPointLightDirection[i] * u_pointLightRangeInverse[i];
         float attenuation = clamp(1.0 - dot(ldir, ldir), 0.0, 1.0);
-        combinedColor += computeLighting(normalVector, normalize(v_vertexToPointLightDirection[i]), u_pointLightColor[i], attenuation);
+        combinedColor += computeLighting(normalVector, normalize(v_vertexToPointLightDirection[i]), u_pointLightColor[i], attenuation, attenuation);
     }
     #endif
 
@@ -85,7 +85,7 @@ vec3 getLitPixel()
 
 		// Apply spot attenuation
         attenuation *= smoothstep(u_spotLightOuterAngleCos[i], u_spotLightInnerAngleCos[i], spotCurrentAngleCos);
-        combinedColor += computeLighting(normalVector, vertexToSpotLightDirection, u_spotLightColor[i], attenuation);
+        combinedColor += computeLighting(normalVector, vertexToSpotLightDirection, u_spotLightColor[i], attenuation, attenuation);
     }
     #endif
 
